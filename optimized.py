@@ -6,7 +6,7 @@ import re
 import os
 import logging
 import string
-from typing import Callable
+from typing import Callable, Tuple
 from datetime import datetime
 
 file_time = datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
@@ -24,6 +24,13 @@ RANDOM_STRING_LENGTH = 100
 PSEUDO_GENERATOR_INTERVAL = 5
 # In Seconds. Recommandation: Keep the monitor interval period greater than generator interval.
 MONITOR_INTERVAL = 10
+
+
+file1_last_line = 0
+file2_last_line = 0
+
+file1_last_count = 0
+file2_last_count = 0
 
 
 def path_exists(path: str) -> bool:
@@ -48,21 +55,24 @@ def write_file(file_path: str, write_data: str, mode: str = "w", force: bool = F
     return write_success
 
 
-def read_file(file_path: str, process_data: Callable[[str], int], mode: str = "r") -> int:
+def read_file(file_path: str, cnt: int, idx: int, process_data: Callable[[str], int], mode: str = "r") -> Tuple[int, int]:
     if file_exists(file_path):
         try:
             with open(file_path, mode) as infile:
-                count = 0
+                count = cnt
+                index = 0
                 for line in infile:
-                    count += process_data(line)
+                    if (index >= idx):
+                        count += process_data(line)
+                    index += 1
 
         except IOError:
             print('IO exception while reading the file.')
         except Exception as e:
             print('Exception while reading a file. details', e)
 
-        return count
-    return 0
+        return [count, index]
+    return [cnt, idx]
 
 
 # Specific helper functions
@@ -80,12 +90,12 @@ def write_log(write_data: str, mode: str = "a", force: bool = False) -> bool:
     return write_file(SEARCH_RESULTS_LOG_FILE_PATH, write_data, mode, force)
 
 
-def read_file1(process_data: Callable[[str], int], mode: str = "r") -> int:
-    return read_file(BASE_FILE_PATH1, process_data, mode)
+def read_file1(process_data: Callable[[str], int], mode: str = "r") -> Tuple[int, int]:
+    return read_file(BASE_FILE_PATH1, file1_last_count, file1_last_line, process_data, mode)
 
 
-def read_file2(process_data: Callable[[str], int], mode: str = "r") -> int:
-    return read_file(BASE_FILE_PATH2, process_data, mode)
+def read_file2(process_data: Callable[[str], int], mode: str = "r") -> Tuple[int, int]:
+    return read_file(BASE_FILE_PATH2, file2_last_count, file2_last_line, process_data, mode)
 
 
 def ensure_file() -> None:
@@ -139,8 +149,17 @@ def generate_random_strings() -> None:
 
 def monitor_files() -> None:
     while True:
-        kw_cnt_file1 = read_file1(find_keyword)
-        kw_cnt_file2 = read_file2(find_keyword)
+        kw_cnt_file1, idx_f1 = read_file1(find_keyword)
+        kw_cnt_file2, idx_f2 = read_file2(find_keyword)
+
+        global file1_last_count, file1_last_line, file2_last_count, file2_last_line
+
+        file1_last_line = idx_f1
+        file2_last_line = idx_f2
+
+        file1_last_count = kw_cnt_file1
+        file2_last_count = kw_cnt_file2
+
         time_now = datetime.now().strftime('%m/%d/%Y, %H:%M:%S')
 
         if kw_cnt_file1 > 0 and kw_cnt_file2 > 0:
